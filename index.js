@@ -106,7 +106,7 @@ function getISODate() {
 }
 
 function getIndex(prefix = 'qbserve-') {
-  return `${prefix}${getISODate().substring(0, 7).replace('-', '.')}`
+  return `${prefix}${getISODate().substring(0, 7).replace('-', '.')}`;
 }
 
 function getBulkIndexAction({ id }) {
