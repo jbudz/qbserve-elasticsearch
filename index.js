@@ -181,7 +181,7 @@ function run() {
       if (response.errors) throw response;
       console.log(JSON.stringify(response));
 
-      del(absolutePath, e => e && errorAndExit(e))
+      del(absolutePath, e => e && errorAndExit(e));
       console.log(`Removed ${absolutePath}`);
     } catch (e) {
       errorAndExit(e);
