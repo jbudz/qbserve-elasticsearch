@@ -1,0 +1,5 @@
+es_host: localhost
+es_port: 9200
+es_protocol: http
+es_username: null
+es_password: null
