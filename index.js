@@ -1,15 +1,17 @@
-const path = require('path')
-const minimatch = require('minimatch')
+const path = require('path');
+const minimatch = require('minimatch');
 const glob = require('glob');
 const del = require('del');
 const elasticsearch = require('elasticsearch');
-const { readFile, unlink, watch } = require('fs');
+const { readFile, readFileSync, watch } = require('fs');
+const { get } = require('lodash');
+const yaml = require('js-yaml');
 
 const config = (() => {
-  const fileConfig = yaml.safeLoad(fs.readFileSync(path.join(process.cwd(), '/config.yml'), 'utf8'))
-  return function (objPath) {
-    return _.get(fileConfig, objPath);
-  }
+  const fileConfig = yaml.safeLoad(readFileSync(path.join(process.cwd(), '/config.yml'), 'utf8'));
+  return function getConfig(objPath) {
+    return get(fileConfig, objPath);
+  };
 })();
 
 const EXPORT_PATTERN = '*.json';
@@ -22,11 +24,11 @@ const client = new elasticsearch.Client({
     host: config('es_host'),
     port: config('es_port'),
     protocol: config('es_protocol'),
-    auth: username && password && `${username}:${password}`
-  }]
-})
+    auth: username && password && `${username}:${password}`,
+  }],
+});
 
-function errorAndExit(error) {
+function errorAndExit(e) {
   console.error(e);
   process.exit(1);
 }
@@ -62,8 +64,8 @@ function cleanData(data) {
     active_in_seconds: activeDurationInSeconds,
     total_in_seconds: totalDurationInSeconds,
     active_ratio: activeRatio,
-    productive_ratio: productiveRatio
-  }
+    productive_ratio: productiveRatio,
+  };
 }
 
 function parseData(filePath) {
@@ -74,8 +76,8 @@ function parseData(filePath) {
 
       const parsedData = JSON.parse(data);
       const cleanedData = cleanData(parsedData);
-      resolve(cleanedData);
-    })
+      return resolve(cleanedData);
+    });
   });
 }
 
@@ -87,15 +89,16 @@ function watchForExports(cb) {
     const absolutePath = path.resolve(DATA_FOLDER, filename);
     try {
       const result = await parseData(absolutePath);
-      if (result) cb(null, {
-        data: result,
-        absolutePath
-      });
-    } catch(e) {
-      cb(e)
+      if (result) {
+        cb(null, {
+          data: result,
+          absolutePath,
+        });
+      }
+    } catch (e) {
+      cb(e);
     }
-
-  })
+  });
 }
 
 function getISODate() {
@@ -111,50 +114,48 @@ function getBulkIndexAction({ id }) {
     index: {
       _index: getIndex(),
       _type: 'doc',
-      _id: id
-    }
-  }
+      _id: id,
+    },
+  };
 }
 
 function index(metrics) {
-  const body = []
-  metrics.forEach(metric => {
+  const body = [];
+  metrics.forEach((metric) => {
     const epochTimestamp = new Date(metric['@timestamp']).getTime();
     const action = getBulkIndexAction({
-      id: `computer:${epochTimestamp}`
+      id: `computer:${epochTimestamp}`,
     });
-    body.push(action, metric)
-  })
+    body.push(action, metric);
+  });
 
   return client.bulk({
-    body
-  })
+    body,
+  });
 }
 
 function getExports() {
   return new Promise((resolve, reject) => {
     const globPath = path.join(DATA_FOLDER, EXPORT_PATTERN);
     glob(globPath, {
-      absolute: true
+      absolute: true,
     }, async (err, files) => {
       if (err) return reject(err);
-      const bulkData = await Promise.all(
-        files.map(parseData)
-      );
+      const bulkData = await Promise.all(files.map(parseData));
 
-      resolve({
+      return resolve({
         bulkData,
-        files
-      })
+        files,
+      });
     });
-  })
+  });
 }
 
 async function indexCurrentExports() {
   try {
     const { bulkData, files } = await getExports();
     if (!bulkData.length) {
-      console.log('No waiting files')
+      console.log('No waiting files');
       return;
     }
 
@@ -164,7 +165,7 @@ async function indexCurrentExports() {
 
     del(files, err => err && errorAndExit(err));
     console.log(`Removed ${files.join(', ')}`);
-  } catch(e) {
+  } catch (e) {
     console.log(e);
   }
 }
@@ -173,19 +174,19 @@ async function indexCurrentExports() {
 function run() {
   indexCurrentExports();
 
-  watchForExports(async (err, { data, absolutePath}) => {
-    if (err) errorAndExit(err)
+  watchForExports(async (err, { data, absolutePath }) => {
+    if (err) errorAndExit(err);
     try {
       const response = await index([data]);
       if (response.errors) throw response;
       console.log(JSON.stringify(response));
 
-      del(absolutePath, err => err && errorAndExit(err))
+      del(absolutePath, e => e && errorAndExit(e))
       console.log(`Removed ${absolutePath}`);
-    } catch(e) {
+    } catch (e) {
       errorAndExit(e);
     }
-  })
+  });
 }
 
 run();
